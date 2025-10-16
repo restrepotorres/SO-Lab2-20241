@@ -173,3 +173,167 @@ static int run_external_command(cmd_t *c)
 // Ejecuta un comando según su tipo (interno o externo)
 // Aquí es donde se manejan los comandos mencioandos en el enunciado
 // Y se ejecutan los comandos externos en caso de no ser uno de estos.
+static int run_cmd(cmd_t *c)
+{
+  if (c->size == 0 || c->args[0] == NULL)
+  {
+    return EXIT_FAILURE; // Comando vacío
+  }
+  if (strcmp(c->args[0], "exit") == 0) // Maneja el comando "exit"
+  {
+    if (c->size > 1)
+    {
+      fprintf(stderr, "An error has occurred\n");
+      return EXIT_FAILURE;
+    }
+    if (!batch_mode)
+    {
+      printf("Goodbye!\n");
+    }
+    return EXIT_SUCCESS; // Finaliza la shell
+  }
+  if (strcmp(c->args[0], "cd") == 0) // Maneja el comando "cd"
+  {
+    if (c->size != 2)
+    {
+      fprintf(stderr, "An error has occurred\n");
+      return EXIT_FAILURE;
+    }
+    if (chdir(c->args[1]) == -1) // Cambia de directorio
+    {
+      fprintf(stderr, "error:\n\tcannot execute command 'cd': %s\n", strerror(errno));
+      return EXIT_FAILURE;
+    }
+    return EXIT_FAILURE;
+  }
+  if (strcmp(c->args[0], "path") == 0) // Maneja el comando "path"
+  {
+    for (int i = 0; i < path_arr.size; i++)
+    {
+      free(path_arr.entries[i]); // Limpia rutas actuales
+    }
+    path_arr.size = 0;
+    for (int i = 1; i < c->size; i++)
+    {
+      check_path_capacity(&path_arr); // Asegura capacidad del PATH
+      path_arr.entries[path_arr.size] = malloc((strlen(c->args[i]) + 1) * sizeof(char));
+      strcpy(path_arr.entries[path_arr.size++], c->args[i]);
+    }
+    return EXIT_FAILURE;
+  }
+  return run_external_command(c); // Corre un comando externo
+}
+
+// Inicia el bucle de la shell
+static void start_shell(FILE *in)
+{
+  while (1)
+  {
+    if (!batch_mode)
+    {
+      char *cwd = getcwd(NULL, 0);
+      if (cwd)
+      {
+        printf("%s\n", cwd);
+        free(cwd);
+      }
+      printf("wish>");
+    }
+    if (fgets(input_line, MAX_LENGTH_CM, in) == NULL || feof(in))
+    {
+      if (batch_mode)
+      {
+        break;
+      }
+      fprintf(stderr, "error: %s", strerror(errno));
+      exit_code = EXIT_FAILURE;
+      break;
+    }
+    cmd_list.size = 0; // Reinicia la lista de comandos
+    char *scp = NULL;
+    char *sc_line = strtok_r(input_line, "&", &scp); // Separa comandos por '&'
+    while (sc_line != NULL)
+    {
+      ensure_cmd_list_capacity(&cmd_list);
+      cmd_t *single_c = cmd_list.commands[cmd_list.size];
+      if (single_c == NULL)
+      {
+        single_c = malloc(sizeof(cmd_t));
+        initialize_command(single_c);
+        cmd_list.commands[cmd_list.size] = single_c;
+      }
+      single_c->size = 0;
+      char *tp = NULL;
+      char *tok = strtok_r(sc_line, " \n", &tp);
+      while (tok != NULL)
+      {
+        check_length_of_command(single_c);
+        single_c->args[single_c->size] = malloc((strlen(tok) + 1) * sizeof(char));
+        strcpy(single_c->args[single_c->size++], tok);
+        tok = strtok_r(NULL, " \n", &tp);
+      }
+      check_length_of_command(single_c);
+      single_c->args[single_c->size] = NULL;
+      sc_line = strtok_r(NULL, "&", &scp);
+      cmd_list.size++;
+    }
+    for (int i = 0; i < cmd_list.size; i++)
+    {
+      if (run_cmd(cmd_list.commands[i]) == EXIT_SUCCESS)
+      {
+        goto FREE_MEM;
+      }
+    }
+  }
+FREE_MEM:
+  return;
+}
+
+int main(int argc, char *argv[])
+{
+  batch_mode = argc > 1;
+  FILE *input = stdin;
+  if (batch_mode)
+  {
+    input = fopen(argv[1], "r");
+    if (input == NULL)
+    {
+      fprintf(stderr, "error: %s\n", strerror(errno));
+      exit(EXIT_FAILURE);
+    }
+  }
+  initialize_array_path_for_command(&path_arr);
+  path_arr.entries[0] = malloc(5 * sizeof(char));
+  strcpy(path_arr.entries[0], "/bin");
+  path_arr.size = 1;
+  initialize_command_list(&cmd_list);
+  input_line = malloc(MAX_LENGTH_CM * sizeof(char));
+  file_path = malloc(MAX_LENGTH_CM * sizeof(char));
+  start_shell(input);
+  free(file_path);
+  free(input_line);
+  for (int i = 0; i < path_arr.size; i++)
+  {
+    free(path_arr.entries[i]);
+  }
+  free(path_arr.entries);
+  for (int i = 0; i < cmd_list.capacity; i++)
+  {
+    cmd_t *c = cmd_list.commands[i];
+    if (c)
+    {
+      for (int j = 0; j < c->capacity; j++)
+      {
+        if (c->args[j])
+        {
+          free(c->args[j]);
+        }
+      }
+      free(c->args);
+      free(c);
+    }
+  }
+  free(cmd_list.commands);
+  fclose(input);
+  exit(exit_code); // Termina con el código de salida adecuado
+}
