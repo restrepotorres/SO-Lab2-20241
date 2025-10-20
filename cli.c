@@ -8,96 +8,102 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 
-#define ARR_LENGTH 2
-#define MAX_LENGTH_CM 1024
+#define LONGITUD_INICIAL_ARREGLO 2
+#define LONGITUD_MAXIMA_COMANDO 1024
 
 typedef struct
 {
-  char **entries;
-  int size; 
-  int capacity;
-} path_array_t;
+  char **entradas;
+  int tamanio; 
+  int capacidad;
+} arreglo_rutas_t;
 
 typedef struct
 {
-  char **args;
-  int size; 
-  int capacity;
-} cmd_t;
+  char **argumentos;
+  int tamanio; 
+  int capacidad;
+} comando_t;
 
 typedef struct
 {
-  cmd_t **commands;
-  int size;
-  int capacity;
-} cmd_list_t;
+  comando_t **comandos;
+  int tamanio;
+  int capacidad;
+} lista_comandos_t;
 
-static path_array_t path_arr;
-static cmd_list_t cmd_list;
-static char *input_line;
-static char *file_path;
-static int exit_code;
-static int batch_mode;
+static arreglo_rutas_t arreglo_rutas;
+static lista_comandos_t lista_comandos;
+static char *linea_entrada;
+static char *ruta_archivo;
+static int codigo_salida;
+static int modo_batch;
+static const char mensaje_error[30] = "An error has occurred\n";
 
-static void initialize_command(cmd_t *c)
+static void imprimir_error(void)
 {
-  c->size = 0;
-  c->capacity = ARR_LENGTH;
-  c->args = calloc(c->capacity, sizeof(char *));
+  write(STDERR_FILENO, mensaje_error, strlen(mensaje_error));
 }
 
-static void initialize_array_path_for_command(path_array_t *arr)
+static void inicializar_comando(comando_t *c)
 {
-  arr->size = 0;
-  arr->capacity = ARR_LENGTH;
-  arr->entries = calloc(arr->capacity, sizeof(char *));
+  c->tamanio = 0;
+  c->capacidad = LONGITUD_INICIAL_ARREGLO;
+  c->argumentos = calloc(c->capacidad, sizeof(char *));
 }
 
-static void initialize_command_list(cmd_list_t *cl)
+static void inicializar_arreglo_rutas(arreglo_rutas_t *arr)
 {
-  cl->size = 0;
-  cl->capacity = ARR_LENGTH;
-  cl->commands = calloc(cl->capacity, sizeof(cmd_t *));
+  arr->tamanio = 0;
+  arr->capacidad = LONGITUD_INICIAL_ARREGLO;
+  arr->entradas = calloc(arr->capacidad, sizeof(char *));
 }
 
-static void check_length_of_command(cmd_t *c)
+static void inicializar_lista_comandos(lista_comandos_t *cl)
 {
-  if (c->size == c->capacity)
+  cl->tamanio = 0;
+  cl->capacidad = LONGITUD_INICIAL_ARREGLO;
+  cl->comandos = calloc(cl->capacidad, sizeof(comando_t *));
+}
+
+static void verificar_longitud_comando(comando_t *c)
+{
+  if (c->tamanio == c->capacidad)
   {
-    c->capacity *= 2;
-    c->args = realloc(c->args, c->capacity * sizeof(char *));
+    c->capacidad *= 2;
+    c->argumentos = realloc(c->argumentos, c->capacidad * sizeof(char *));
   }
 }
 
-static void check_path_capacity(path_array_t *arr)
+static void verificar_capacidad_rutas(arreglo_rutas_t *arr)
 {
-  if (arr->size == arr->capacity)
+  if (arr->tamanio == arr->capacidad)
   {
-    arr->capacity *= 2;
-    arr->entries = realloc(arr->entries, arr->capacity * sizeof(char *));
+    arr->capacidad *= 2;
+    arr->entradas = realloc(arr->entradas, arr->capacidad * sizeof(char *));
   }
 }
 
-static void ensure_cmd_list_capacity(cmd_list_t *cl)
+static void asegurar_capacidad_lista_comandos(lista_comandos_t *cl)
 {
-  if (cl->size == cl->capacity)
+  if (cl->tamanio == cl->capacidad)
   {
-    cl->capacity *= 2;
-    cl->commands = realloc(cl->commands, cl->capacity * sizeof(cmd_t *));
+    cl->capacidad *= 2;
+    cl->comandos = realloc(cl->comandos, cl->capacidad * sizeof(comando_t *));
   }
 }
 
-static int check_file_access_for_executable_file(char *filename, char **out_fp)
+static int verificar_acceso_archivo_ejecutable(char *nombre_archivo, char **ruta_salida)
 {
-  if (access(filename, X_OK) == 0)
+  if (access(nombre_archivo, X_OK) == 0)
   {
-    strcpy(*out_fp, filename);
+    strcpy(*ruta_salida, nombre_archivo);
     return EXIT_SUCCESS;
   }
-  for (int i = 0; i < path_arr.size; i++)
+  for (int i = 0; i < arreglo_rutas.tamanio; i++)
   {
-    snprintf(*out_fp, MAX_LENGTH_CM, "%s/%s", path_arr.entries[i], filename);
-    if (access(*out_fp, X_OK) == 0)
+    snprintf(*ruta_salida, LONGITUD_MAXIMA_COMANDO, "%s/%s", arreglo_rutas.entradas[i], nombre_archivo);
+    if (access(*ruta_salida, X_OK) == 0)
     {
       return EXIT_SUCCESS;
     }
@@ -105,219 +111,249 @@ static int check_file_access_for_executable_file(char *filename, char **out_fp)
   return EXIT_FAILURE;
 }
 
-static int run_external_command(cmd_t *c)
+static int ejecutar_comando_externo(comando_t *c)
 {
-  int ri = -1;
-  for (int i = 0; i < c->size; i++)
+  int indice_redireccion = -1;
+  for (int i = 0; i < c->tamanio; i++)
   {
-    if (strcmp(c->args[i], ">") == 0)
+    if (strcmp(c->argumentos[i], ">") == 0)
     {
-      ri = i;
-      if (ri == 0 || (c->size - (ri + 1)) != 1) 
+      indice_redireccion = i;
+      if (indice_redireccion == 0 || (c->tamanio - (indice_redireccion + 1)) != 1) 
       {
-        fprintf(stderr, "An error has occurred\n");
+        imprimir_error();
         return EXIT_FAILURE;
       }
-      c->args[ri] = NULL; 
+      c->argumentos[indice_redireccion] = NULL; 
       break;
     }
   }
-  if (check_file_access_for_executable_file(c->args[0], &file_path) == EXIT_SUCCESS)
+  if (verificar_acceso_archivo_ejecutable(c->argumentos[0], &ruta_archivo) == EXIT_SUCCESS)
   {
-    pid_t child = fork();
-    if (child == -1) 
+    pid_t hijo = fork();
+    if (hijo == -1) 
     {
-      fprintf(stderr, "error: %s\n", strerror(errno));
-      exit_code = EXIT_FAILURE;
-      return EXIT_SUCCESS;
+      imprimir_error();
+      codigo_salida = EXIT_FAILURE;
+      return EXIT_FAILURE;
     }
-    if (child == 0) 
+    if (hijo == 0) 
     {
-      if (ri != -1) 
+      if (indice_redireccion != -1) 
       {
-        int fd = open(c->args[ri + 1], O_WRONLY | O_CREAT | O_TRUNC | O_SYNC, 0666);
+        int fd = open(c->argumentos[indice_redireccion + 1], O_WRONLY | O_CREAT | O_TRUNC, 0666);
         if (fd == -1)
         {
-          fprintf(stderr, "error: %s\n", strerror(errno));
+          imprimir_error();
           exit(EXIT_FAILURE);
         }
         dup2(fd, STDOUT_FILENO);
         dup2(fd, STDERR_FILENO);
         close(fd);
       }
-      execv(file_path, c->args); 
-      fprintf(stderr, "error: %s\n", strerror(errno));
+      execv(ruta_archivo, c->argumentos); 
+      imprimir_error();
       exit(EXIT_FAILURE); 
     }
+    return 1; // Retorna 1 para indicar que se creó un proceso hijo
   }
   else
   {
-    fprintf(stderr, batch_mode ? "An error has occurred\n" : "error:\n\tcommand '%s' not found\n", c->args[0]);
+    imprimir_error();
   }
   return EXIT_FAILURE;
 }
 
-
-static int run_cmd(cmd_t *c)
+static int ejecutar_comando(comando_t *c)
 {
-  if (c->size == 0 || c->args[0] == NULL)
+  if (c->tamanio == 0 || c->argumentos[0] == NULL)
   {
     return EXIT_FAILURE; 
   }
-  if (strcmp(c->args[0], "exit") == 0)
+  if (strcmp(c->argumentos[0], "exit") == 0)
   {
-    if (c->size > 1)
+    if (c->tamanio > 1)
     {
-      fprintf(stderr, "An error has occurred\n");
+      imprimir_error();
       return EXIT_FAILURE;
-    }
-    if (!batch_mode)
-    {
-      printf("Goodbye!\n");
     }
     return EXIT_SUCCESS; 
   }
-  if (strcmp(c->args[0], "cd") == 0) 
+  if (strcmp(c->argumentos[0], "cd") == 0) 
   {
-    if (c->size != 2)
+    if (c->tamanio != 2)
     {
-      fprintf(stderr, "An error has occurred\n");
+      imprimir_error();
       return EXIT_FAILURE;
     }
-    if (chdir(c->args[1]) == -1) 
+    if (chdir(c->argumentos[1]) == -1) 
     {
-      fprintf(stderr, "error:\n\tcannot execute command 'cd': %s\n", strerror(errno));
+      imprimir_error();
       return EXIT_FAILURE;
     }
     return EXIT_FAILURE;
   }
-  if (strcmp(c->args[0], "path") == 0) 
+  if (strcmp(c->argumentos[0], "path") == 0) 
   {
-    for (int i = 0; i < path_arr.size; i++)
+    for (int i = 0; i < arreglo_rutas.tamanio; i++)
     {
-      free(path_arr.entries[i]); 
+      free(arreglo_rutas.entradas[i]); 
     }
-    path_arr.size = 0;
-    for (int i = 1; i < c->size; i++)
+    arreglo_rutas.tamanio = 0;
+    for (int i = 1; i < c->tamanio; i++)
     {
-      check_path_capacity(&path_arr); 
-      path_arr.entries[path_arr.size] = malloc((strlen(c->args[i]) + 1) * sizeof(char));
-      strcpy(path_arr.entries[path_arr.size++], c->args[i]);
+      verificar_capacidad_rutas(&arreglo_rutas); 
+      arreglo_rutas.entradas[arreglo_rutas.tamanio] = malloc((strlen(c->argumentos[i]) + 1) * sizeof(char));
+      strcpy(arreglo_rutas.entradas[arreglo_rutas.tamanio++], c->argumentos[i]);
     }
     return EXIT_FAILURE;
   }
-  return run_external_command(c); 
+  return ejecutar_comando_externo(c); 
 }
 
-static void start_shell(FILE *in)
+static void iniciar_shell(FILE *entrada)
 {
   while (1)
   {
-    if (!batch_mode)
+    if (!modo_batch)
     {
-      char *cwd = getcwd(NULL, 0);
-      if (cwd)
-      {
-        printf("%s\n", cwd);
-        free(cwd);
-      }
-      printf("wish>");
+      printf("wish> ");
+      fflush(stdout);
     }
-    if (fgets(input_line, MAX_LENGTH_CM, in) == NULL || feof(in))
+    if (fgets(linea_entrada, LONGITUD_MAXIMA_COMANDO, entrada) == NULL || feof(entrada))
     {
-      if (batch_mode)
+      if (modo_batch)
       {
         break;
       }
-      fprintf(stderr, "error: %s", strerror(errno));
-      exit_code = EXIT_FAILURE;
+      imprimir_error();
+      codigo_salida = EXIT_FAILURE;
       break;
     }
-    cmd_list.size = 0; 
-    char *scp = NULL;
-    char *sc_line = strtok_r(input_line, "&", &scp);
-    while (sc_line != NULL)
+    lista_comandos.tamanio = 0; 
+    char *puntero_contexto_separador = NULL;
+    char *linea_comando_simple = strtok_r(linea_entrada, "&", &puntero_contexto_separador);
+    while (linea_comando_simple != NULL)
     {
-      ensure_cmd_list_capacity(&cmd_list);
-      cmd_t *single_c = cmd_list.commands[cmd_list.size];
-      if (single_c == NULL)
+      asegurar_capacidad_lista_comandos(&lista_comandos);
+      comando_t *comando_individual = lista_comandos.comandos[lista_comandos.tamanio];
+      if (comando_individual == NULL)
       {
-        single_c = malloc(sizeof(cmd_t));
-        initialize_command(single_c);
-        cmd_list.commands[cmd_list.size] = single_c;
+        comando_individual = malloc(sizeof(comando_t));
+        inicializar_comando(comando_individual);
+        lista_comandos.comandos[lista_comandos.tamanio] = comando_individual;
       }
-      single_c->size = 0;
-      char *tp = NULL;
-      char *tok = strtok_r(sc_line, " \n", &tp);
-      while (tok != NULL)
+      comando_individual->tamanio = 0;
+      char *puntero_token = NULL;
+      char *token = strtok_r(linea_comando_simple, " \t\n", &puntero_token);
+      while (token != NULL)
       {
-        check_length_of_command(single_c);
-        single_c->args[single_c->size] = malloc((strlen(tok) + 1) * sizeof(char));
-        strcpy(single_c->args[single_c->size++], tok);
-        tok = strtok_r(NULL, " \n", &tp);
+        verificar_longitud_comando(comando_individual);
+        comando_individual->argumentos[comando_individual->tamanio] = malloc((strlen(token) + 1) * sizeof(char));
+        strcpy(comando_individual->argumentos[comando_individual->tamanio++], token);
+        token = strtok_r(NULL, " \t\n", &puntero_token);
       }
-      check_length_of_command(single_c);
-      single_c->args[single_c->size] = NULL;
-      sc_line = strtok_r(NULL, "&", &scp);
-      cmd_list.size++;
+      verificar_longitud_comando(comando_individual);
+      comando_individual->argumentos[comando_individual->tamanio] = NULL;
+      linea_comando_simple = strtok_r(NULL, "&", &puntero_contexto_separador);
+      lista_comandos.tamanio++;
     }
-    for (int i = 0; i < cmd_list.size; i++)
+    
+    int contador_hijos = 0;
+    int debe_salir = 0;
+    
+    for (int i = 0; i < lista_comandos.tamanio; i++)
     {
-      if (run_cmd(cmd_list.commands[i]) == EXIT_SUCCESS)
+      int resultado = ejecutar_comando(lista_comandos.comandos[i]);
+      if (resultado == EXIT_SUCCESS) // Es exit
       {
-        goto FREE_MEM;
+        debe_salir = 1;
+        break;
       }
+      else if (resultado == 1) // Se creó un proceso hijo
+      {
+        contador_hijos++;
+      }
+    }
+    
+    // Esperar solo por los procesos hijos creados
+    for (int i = 0; i < contador_hijos; i++)
+    {
+      wait(NULL);
+    }
+    
+    if (debe_salir)
+    {
+      break;
     }
   }
-FREE_MEM:
-  return;
 }
 
 int main(int argc, char *argv[])
 {
-  batch_mode = argc > 1;
-  FILE *input = stdin;
-  if (batch_mode)
+  // Validar número de argumentos
+  if (argc > 2)
   {
-    input = fopen(argv[1], "r");
-    if (input == NULL)
+    imprimir_error();
+    exit(1);
+  }
+  
+  modo_batch = argc == 2;
+  FILE *entrada = stdin;
+  
+  if (modo_batch)
+  {
+    entrada = fopen(argv[1], "r");
+    if (entrada == NULL)
     {
-      fprintf(stderr, "error: %s\n", strerror(errno));
-      exit(EXIT_FAILURE);
+      imprimir_error();
+      exit(1);
     }
   }
-  initialize_array_path_for_command(&path_arr);
-  path_arr.entries[0] = malloc(5 * sizeof(char));
-  strcpy(path_arr.entries[0], "/bin");
-  path_arr.size = 1;
-  initialize_command_list(&cmd_list);
-  input_line = malloc(MAX_LENGTH_CM * sizeof(char));
-  file_path = malloc(MAX_LENGTH_CM * sizeof(char));
-  start_shell(input);
-  free(file_path);
-  free(input_line);
-  for (int i = 0; i < path_arr.size; i++)
+  
+  inicializar_arreglo_rutas(&arreglo_rutas);
+  
+  // Inicializar path con /bin
+  arreglo_rutas.entradas[0] = malloc(5 * sizeof(char));
+  strcpy(arreglo_rutas.entradas[0], "/bin");
+  arreglo_rutas.tamanio = 1;
+  
+  inicializar_lista_comandos(&lista_comandos);
+  linea_entrada = malloc(LONGITUD_MAXIMA_COMANDO * sizeof(char));
+  ruta_archivo = malloc(LONGITUD_MAXIMA_COMANDO * sizeof(char));
+  
+  iniciar_shell(entrada);
+  
+  // Liberar memoria
+  free(ruta_archivo);
+  free(linea_entrada);
+  for (int i = 0; i < arreglo_rutas.tamanio; i++)
   {
-    free(path_arr.entries[i]);
+    free(arreglo_rutas.entradas[i]);
   }
-  free(path_arr.entries);
-  for (int i = 0; i < cmd_list.capacity; i++)
+  free(arreglo_rutas.entradas);
+  for (int i = 0; i < lista_comandos.capacidad; i++)
   {
-    cmd_t *c = cmd_list.commands[i];
+    comando_t *c = lista_comandos.comandos[i];
     if (c)
     {
-      for (int j = 0; j < c->capacity; j++)
+      for (int j = 0; j < c->capacidad; j++)
       {
-        if (c->args[j])
+        if (c->argumentos[j])
         {
-          free(c->args[j]);
+          free(c->argumentos[j]);
         }
       }
-      free(c->args);
+      free(c->argumentos);
       free(c);
     }
   }
-  free(cmd_list.commands);
-  fclose(input);
-  exit(exit_code); 
+  free(lista_comandos.comandos);
+  
+  if (entrada != stdin)
+  {
+    fclose(entrada);
+  }
+  
+  exit(codigo_salida); 
 }
