@@ -1,38 +1,108 @@
+# Práctica 
 # Práctica 2 de laboratorio - API de Procesos #
 
-## Instrucciones ##
-Antes de comenzar a trabajar en esta práctica se recomienda que lleve a cabo los siguientes pasos:
-1. Haga un fork de este repositorio.
-2. La persona que haga el fork agregue como colaborador a los compañeros de trabajo.
-3. Cada uno de los integrantes del equipo puede hacer una copia local del laboratorio con el fin de colaborar en su desarrollo.
-4. No olvide ir actualizando la práctica del laboratorio a medida que vaya avanzando en esta. Para el caso, vaya llevando a cabo los test proporsionados (tal y como se explicó en el laboratorio). Estos test serán el indicativo de cómo va su trabajo.
+realizado por:
+* Victor Restrepo CC 1017270327
+* Guillermo Uribe CC 1037643854
+
+> ## Objetivos
+> * Aprender a codificar programas usando el lenguaje C a nivel básico e intermedio.
+> * Aprender a usar las herramientas básicas para desarrollar aplicaciones en un ambiente de desarrollo linux.
+
+# NOTA Importante
+Todo el codigo desarrollado  se encuentra en la ruta ./Laboratorio/Lab1.c , el archivo compilado para linux de 64 bits es ./Laboratorio1/reverse
 
 
-## Componentes del laboratorio ##
+## Descripción del Programa
 
-El siguiente laboratorio esta compuesto por dos directorios principales los cuales contienen:
-1. **Ejercicios de refuerzo**: En este directorio hay varios ejercicios sencillos cuyo objetivo es reforzar los conceptos teóricos y prácticos relacionados con el manejo procesos ([link](./ejercicios_refuerzo)).
-2. **Enunciado**: Contiene el enunciado y las instrucciones de la práctica de laboratorio ([link](./enunciado)).
-   
-## Actividad a realizar ## 
-Para el siguiente laboratorio se deben realizar los siguientes ejercicios:
-1. Del directorio de [ejercicios de refuerzo](./ejercicios_refuerzo) realizar solo el **ejercicio 7** de la sección de **problemas de programación**.
-2. Realizar el **shell de unix** propuesto en la carpeta [enunciado](./enunciado) empleando los diferentes test que se brindan para tal fin.
+El programa desarrollado es un inversor de líneas de archivo que lee un archivo de texto y muestra su contenido con las líneas en orden inverso (de la última a la primera). El programa implementa tres modos de funcionamiento diferentes según los argumentos proporcionados.
 
-## Material a la mano ##
 
-Adjunto con el presente laboratorio hay dos documentos de la UJI (Universitat Jaume I) muy buenos con los conceptos y con ejemplos que necesitan para el desarrollo la práctica. Estos documentos son:
-1. [Introducción a la programación con C](./s29.pdf)
-2. [100 ejercicios resueltos de Sistemas Operativos](./s30.pdf)
+1. Si no se pasan argumentos: 
+   - Lee texto desde la entrada estándar
+   - El usuario ingresa líneas de texto manualmente
+   - El usuario termina el ingreso de texto con Ctrl+D
+   - Muestra el resultado en pantalla
 
-## Importante comprender ##
+2. Si se pasa 1 argumento
+   - Se lee el argumento como la ruta del texto de entrada
+   - Muestra el contenido invertido en la consola
 
-Para poder realizar la práctica es necesario comprender cabalmente los siguientes conceptos:
-1. API de procesos (**Su comprensión es fundamental ya que constituye el corazón del laboratorio**. A continuación se muestra el [link con teoria y ejemplos](https://github.com/dannymrock/UdeA-SO-Lab/tree/master/lab1)). 
-2. Manejo de argumentos por línea de comandos ([link con ejemplos](https://github.com/dannymrock/SO-Lab1-20201/tree/master/ejemplos/ejemplos_argc_argv)).
-3. Manejo de archivos en C ([link de la teoria](https://github.com/dannymrock/UdeA-SO-Lab/tree/master/lab0/lab0b/parte6))
-4. Manejo de la consola de linux (Es de utilidad conocer la filosofía de la consola de la línea de comandos para hacerse una idea de la funcionalidad básica que tendrá la consola a implementar, ya que esta última es una versión reducida de la primera. [Link de la teoria](https://github.com/dannymrock/UdeA-SO-Lab/tree/master/lab0/lab0a/consola_linux)).
-   
-Si no maneja estos conceptos; sobre el primero, por favor estúdielos con detenimiento, de la comprensión de estos depende el desarrollo de la práctica. También, revise la teoría más simple en caso de no creer tener la suficiente familiaridad con el lenguaje C. Es necesario la comprensión de los conceptos más básicos en C para poder manejar archivos, implementación de funciones, manejo de punteros y arreglos.
+3. Si se pasan 2 argumentos
+   - Lee desde un archivo de entrada (argumento 1)
+   - Guarda el resultado en un archivo de salida (argumento 2)
 
-Tenga además en cuenta que se agregan bastantes ejemplos con el fin de que los analice y comprenda. Si tiene dificultades para entenderlos pregunte sin pena en el foro del curso y vea los videos que allí se compartieron. Recuerden, No hay pregunta boba, bobo es el que no pregunta.
+## Características Técnicas Implementadas
+
+### Gestión de memoria dinamica
+El programa utiliza memoria dinámica para adaptarse a archivos de cualquier tamaño:
+
+- **Array dinámico de punteros**: Almacena referencias a cada línea
+- **Crecimiento de memoria reservada**: La capacidad se multiplica por 2 cuando es necesario
+- **Asignación exacta**: Cada línea ocupa solo la memoria necesaria
+
+### Algoritmo de Funcionamiento
+
+1. **Inicialización**
+   - Se crea un array dinámico con capacidad inicial de 10 líneas
+   - Se determina la fuente de entrada según los argumentos
+
+2. **Lectura de Líneas**
+   - Se lee línea por línea usando la funcion `fgets()`
+   - Si se agota la capacidad, se redimensiona el array usando `realloc()`
+   - Cada línea se almacena en memoria dinámica individual
+   - Se normaliza el formato agregando `\n` si la última línea no lo tiene
+
+3. **Salida Invertida**
+   - Se recorre el array desde el último índice hasta el primero
+   - Se escribe a la salida correspondiente (pantalla o archivo)
+
+
+### Manejo de Errores
+El programa incluye validación de los siguientes errores:
+
+- cantidad de argumentos a la entrada
+- Validación de apertura de archivos
+- Verificación de asignación de memoria
+- Mensajes informativos para el usuario
+
+## Estructuras de Datos Utilizadas
+
+### Array Dinámico de Punteros
+```c
+char **lines = NULL;  // Array principal
+int line_count = 0;   // Contador de líneas
+int capacity = 10;    // Capacidad actual
+```
+
+### Buffer de Lectura
+```c
+char buffer[1024];    // Buffer temporal para leer los archivos
+```
+
+## Funciones usadas
+
+### Gestión de Memoria
+- `malloc()`: Asignación inicial de memoria
+- `realloc()`: Redimensionamiento dinámico del array
+- `free()`: Liberación de memoria
+
+### Entrada/Salida
+- `fgets()`: Lectura de líneas desde archivo o stdin
+- `fprintf()`: Escritura a archivo o stdout
+- `fopen()/fclose()`: Manejo de archivos
+
+### Manipulación de Strings
+- `strlen()`: Cálculo de longitud de cadenas
+- `strcpy()`: Copia de cadenas
+
+
+## Conclusiones
+
+El programa desarrollado cumple exitosamente con los objetivos planteados para la practica, demostrando el uso de conceptos fundamentales de programación en C como:
+
+- Gestión dinámica de memoria
+- Manejo de archivos y entrada/salida
+- Validación de errores
+- Manipulación de argumentos de línea de comandos
+- Estructuras de datos dinámicas
