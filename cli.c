@@ -8,27 +8,23 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 
-// Definición de constantes para tamaño inicial de arreglos y comandos
 #define ARR_LENGTH 2
 #define MAX_LENGTH_CM 1024
 
-// Estructura para almacenar las rutas del PATH
 typedef struct
 {
   char **entries;
-  int size; // Esto es para almacenar la antidad de rutas actuales
+  int size; 
   int capacity;
 } path_array_t;
 
-// Estructura para almacenar un comando y sus argumentos
 typedef struct
 {
   char **args;
-  int size; // Número actual de argumentos
+  int size; 
   int capacity;
 } cmd_t;
 
-// Estructura para manejar una lista de comandos
 typedef struct
 {
   cmd_t **commands;
@@ -36,7 +32,6 @@ typedef struct
   int capacity;
 } cmd_list_t;
 
-// Variables globales para la configuración de la shell
 static path_array_t path_arr;
 static cmd_list_t cmd_list;
 static char *input_line;
@@ -44,7 +39,6 @@ static char *file_path;
 static int exit_code;
 static int batch_mode;
 
-// Inicializa un comando con memoria para sus argumentos
 static void initialize_command(cmd_t *c)
 {
   c->size = 0;
@@ -52,7 +46,6 @@ static void initialize_command(cmd_t *c)
   c->args = calloc(c->capacity, sizeof(char *));
 }
 
-// Inicializa el arreglo de rutas del PATH
 static void initialize_array_path_for_command(path_array_t *arr)
 {
   arr->size = 0;
@@ -60,7 +53,6 @@ static void initialize_array_path_for_command(path_array_t *arr)
   arr->entries = calloc(arr->capacity, sizeof(char *));
 }
 
-// Inicializa la lista de comandos
 static void initialize_command_list(cmd_list_t *cl)
 {
   cl->size = 0;
@@ -68,7 +60,6 @@ static void initialize_command_list(cmd_list_t *cl)
   cl->commands = calloc(cl->capacity, sizeof(cmd_t *));
 }
 
-// Verifica si es necesario redimensionar el arreglo de argumentos de un comando
 static void check_length_of_command(cmd_t *c)
 {
   if (c->size == c->capacity)
@@ -78,7 +69,6 @@ static void check_length_of_command(cmd_t *c)
   }
 }
 
-// Verifica si es necesario redimensionar el arreglo de rutas del PATH
 static void check_path_capacity(path_array_t *arr)
 {
   if (arr->size == arr->capacity)
@@ -88,7 +78,6 @@ static void check_path_capacity(path_array_t *arr)
   }
 }
 
-// Verifica si es necesario redimensionar la lista de comandos
 static void ensure_cmd_list_capacity(cmd_list_t *cl)
 {
   if (cl->size == cl->capacity)
@@ -98,7 +87,6 @@ static void ensure_cmd_list_capacity(cmd_list_t *cl)
   }
 }
 
-// Verifica si un archivo es ejecutable o busca su ruta en el PATH
 static int check_file_access_for_executable_file(char *filename, char **out_fp)
 {
   if (access(filename, X_OK) == 0)
@@ -117,7 +105,6 @@ static int check_file_access_for_executable_file(char *filename, char **out_fp)
   return EXIT_FAILURE;
 }
 
-// Corre un comando externo en un proceso hijo, con manejo de redirección de salida
 static int run_external_command(cmd_t *c)
 {
   int ri = -1;
@@ -126,27 +113,27 @@ static int run_external_command(cmd_t *c)
     if (strcmp(c->args[i], ">") == 0)
     {
       ri = i;
-      if (ri == 0 || (c->size - (ri + 1)) != 1) // Validación de redirección
+      if (ri == 0 || (c->size - (ri + 1)) != 1) 
       {
         fprintf(stderr, "An error has occurred\n");
         return EXIT_FAILURE;
       }
-      c->args[ri] = NULL; // Marca el final de los argumentos
+      c->args[ri] = NULL; 
       break;
     }
   }
   if (check_file_access_for_executable_file(c->args[0], &file_path) == EXIT_SUCCESS)
   {
     pid_t child = fork();
-    if (child == -1) // Error al crear el proceso hijo
+    if (child == -1) 
     {
       fprintf(stderr, "error: %s\n", strerror(errno));
       exit_code = EXIT_FAILURE;
       return EXIT_SUCCESS;
     }
-    if (child == 0) // Código del proceso hijo
+    if (child == 0) 
     {
-      if (ri != -1) // Configuración de redirección si aplica
+      if (ri != -1) 
       {
         int fd = open(c->args[ri + 1], O_WRONLY | O_CREAT | O_TRUNC | O_SYNC, 0666);
         if (fd == -1)
@@ -154,13 +141,13 @@ static int run_external_command(cmd_t *c)
           fprintf(stderr, "error: %s\n", strerror(errno));
           exit(EXIT_FAILURE);
         }
-        dup2(fd, STDOUT_FILENO); // Redirige la salida estándar
-        dup2(fd, STDERR_FILENO); // Redirige errores
+        dup2(fd, STDOUT_FILENO);
+        dup2(fd, STDERR_FILENO);
         close(fd);
       }
-      execv(file_path, c->args); // Ejecuta el comando
+      execv(file_path, c->args); 
       fprintf(stderr, "error: %s\n", strerror(errno));
-      exit(EXIT_FAILURE); // Finaliza el hijo si falla execv
+      exit(EXIT_FAILURE); 
     }
   }
   else
@@ -170,16 +157,14 @@ static int run_external_command(cmd_t *c)
   return EXIT_FAILURE;
 }
 
-// Ejecuta un comando según su tipo (interno o externo)
-// Aquí es donde se manejan los comandos mencioandos en el enunciado
-// Y se ejecutan los comandos externos en caso de no ser uno de estos.
+
 static int run_cmd(cmd_t *c)
 {
   if (c->size == 0 || c->args[0] == NULL)
   {
-    return EXIT_FAILURE; // Comando vacío
+    return EXIT_FAILURE; 
   }
-  if (strcmp(c->args[0], "exit") == 0) // Maneja el comando "exit"
+  if (strcmp(c->args[0], "exit") == 0)
   {
     if (c->size > 1)
     {
@@ -190,41 +175,40 @@ static int run_cmd(cmd_t *c)
     {
       printf("Goodbye!\n");
     }
-    return EXIT_SUCCESS; // Finaliza la shell
+    return EXIT_SUCCESS; 
   }
-  if (strcmp(c->args[0], "cd") == 0) // Maneja el comando "cd"
+  if (strcmp(c->args[0], "cd") == 0) 
   {
     if (c->size != 2)
     {
       fprintf(stderr, "An error has occurred\n");
       return EXIT_FAILURE;
     }
-    if (chdir(c->args[1]) == -1) // Cambia de directorio
+    if (chdir(c->args[1]) == -1) 
     {
       fprintf(stderr, "error:\n\tcannot execute command 'cd': %s\n", strerror(errno));
       return EXIT_FAILURE;
     }
     return EXIT_FAILURE;
   }
-  if (strcmp(c->args[0], "path") == 0) // Maneja el comando "path"
+  if (strcmp(c->args[0], "path") == 0) 
   {
     for (int i = 0; i < path_arr.size; i++)
     {
-      free(path_arr.entries[i]); // Limpia rutas actuales
+      free(path_arr.entries[i]); 
     }
     path_arr.size = 0;
     for (int i = 1; i < c->size; i++)
     {
-      check_path_capacity(&path_arr); // Asegura capacidad del PATH
+      check_path_capacity(&path_arr); 
       path_arr.entries[path_arr.size] = malloc((strlen(c->args[i]) + 1) * sizeof(char));
       strcpy(path_arr.entries[path_arr.size++], c->args[i]);
     }
     return EXIT_FAILURE;
   }
-  return run_external_command(c); // Corre un comando externo
+  return run_external_command(c); 
 }
 
-// Inicia el bucle de la shell
 static void start_shell(FILE *in)
 {
   while (1)
@@ -249,9 +233,9 @@ static void start_shell(FILE *in)
       exit_code = EXIT_FAILURE;
       break;
     }
-    cmd_list.size = 0; // Reinicia la lista de comandos
+    cmd_list.size = 0; 
     char *scp = NULL;
-    char *sc_line = strtok_r(input_line, "&", &scp); // Separa comandos por '&'
+    char *sc_line = strtok_r(input_line, "&", &scp);
     while (sc_line != NULL)
     {
       ensure_cmd_list_capacity(&cmd_list);
@@ -335,5 +319,5 @@ int main(int argc, char *argv[])
   }
   free(cmd_list.commands);
   fclose(input);
-  exit(exit_code); // Termina con el código de salida adecuado
+  exit(exit_code); 
 }
