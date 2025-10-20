@@ -1,108 +1,153 @@
-# Práctica 
-# Práctica 2 de laboratorio - API de Procesos #
+# Práctica 2 de laboratorio - API de Procesos
 
 realizado por:
 * Victor Restrepo CC 1017270327
 * Guillermo Uribe CC 1037643854
 
-> ## Objetivos
-> * Aprender a codificar programas usando el lenguaje C a nivel básico e intermedio.
-> * Aprender a usar las herramientas básicas para desarrollar aplicaciones en un ambiente de desarrollo linux.
+## Objetivos
+* Familiarizarse con el entorno de programación de linux y sus llamadas al sistema.
+* Aprender cómo los procesos son creados, destruidos y gestionados mediante fork, exec y wait.
+* Implementar un intérprete de línea de comandos funcional con comandos integrados, redirección y ejecución paralela.
 
 # NOTA Importante
-Todo el codigo desarrollado  se encuentra en la ruta ./Laboratorio/Lab1.c , el archivo compilado para linux de 64 bits es ./Laboratorio1/reverse
-
+Todo el código desarrollado se encuentra en el archivo cli.c. Compilar con `gcc -o wish cli.c` . Adicionalmente en este mismo repo se encuentra el programa compilado (wish en la raiz) para linux de 64 bits.
 
 ## Descripción del Programa
 
-El programa desarrollado es un inversor de líneas de archivo que lee un archivo de texto y muestra su contenido con las líneas en orden inverso (de la última a la primera). El programa implementa tres modos de funcionamiento diferentes según los argumentos proporcionados.
+El programa es un shell básico llamado **wish** que funciona como intérprete de línea de comandos. Tiene dos modos de funcionamiento:
 
+1. **Modo Interactivo**: Muestra el prompt `wish> ` y espera que el usuario digite comandos hasta que escriba `exit`
+2. **Modo Batch**: Lee y ejecuta comandos desde un archivo de texto sin mostrar el prompt
 
-1. Si no se pasan argumentos: 
-   - Lee texto desde la entrada estándar
-   - El usuario ingresa líneas de texto manualmente
-   - El usuario termina el ingreso de texto con Ctrl+D
-   - Muestra el resultado en pantalla
-
-2. Si se pasa 1 argumento
-   - Se lee el argumento como la ruta del texto de entrada
-   - Muestra el contenido invertido en la consola
-
-3. Si se pasan 2 argumentos
-   - Lee desde un archivo de entrada (argumento 1)
-   - Guarda el resultado en un archivo de salida (argumento 2)
+El shell busca y ejecuta comandos externos en el PATH, además se le programaron tres comandos integrados especiales: `exit`, `cd` y `path`.
 
 ## Características Técnicas Implementadas
 
-### Gestión de memoria dinamica
-El programa utiliza memoria dinámica para adaptarse a archivos de cualquier tamaño:
+### 1. Comandos Integrados (Built-in)
+Se programaron 3 comandos que el shell ejecuta directamente:
+- **`exit`**: Cierra el shell (no recibe argumentos)
+- **`cd <directorio>`**: Cambia el directorio actual usando la syscall `chdir()`
+- **`path [dir1] [dir2] ...`**: Configura las rutas donde buscar los ejecutables
 
-- **Array dinámico de punteros**: Almacena referencias a cada línea
-- **Crecimiento de memoria reservada**: La capacidad se multiplica por 2 cuando es necesario
-- **Asignación exacta**: Cada línea ocupa solo la memoria necesaria
+### 2. Gestión del PATH
+- El PATH inicial solo tiene `/bin`
+- Para buscar ejecutables usa `access()` con el flag `X_OK`
+- Recorre cada directorio del PATH en orden hasta encontrar el comando
 
-### Algoritmo de Funcionamiento
+### 3. Redirección de Salida
+- Se usa con el formato: `comando [args] > archivo`
+- Redirige tanto stdout como stderr al archivo
+- Usa las syscalls `open()` y `dup2()` para implementarlo
 
-1. **Inicialización**
-   - Se crea un array dinámico con capacidad inicial de 10 líneas
-   - Se determina la fuente de entrada según los argumentos
+### 4. Ejecución Paralela
+- Se usa el operador `&` para correr varios comandos al tiempo
+- Ejemplo: `cmd1 & cmd2 & cmd3`
+- Usa `fork()` para crear los procesos hijos y `wait()` para esperar que terminen todos
 
-2. **Lectura de Líneas**
-   - Se lee línea por línea usando la funcion `fgets()`
-   - Si se agota la capacidad, se redimensiona el array usando `realloc()`
-   - Cada línea se almacena en memoria dinámica individual
-   - Se normaliza el formato agregando `\n` si la última línea no lo tiene
+### 5. Gestión de Memoria Dinámica
+- Los arrays empiezan con capacidad de 2 elementos
+- Cuando se llenan, se duplica la capacidad usando `realloc()`
+- Toda la memoria se libera correctamente al finalizar
 
-3. **Salida Invertida**
-   - Se recorre el array desde el último índice hasta el primero
-   - Se escribe a la salida correspondiente (pantalla o archivo)
+## Algoritmo de Funcionamiento
 
+El programa funciona así:
 
-### Manejo de Errores
-El programa incluye validación de los siguientes errores:
+1. **Inicialización:**
+   - Valida que no haya más de 1 argumento
+   - Define si es modo interactivo o batch
+   - Inicializa las estructuras de datos y configura el PATH con /bin
 
-- cantidad de argumentos a la entrada
-- Validación de apertura de archivos
-- Verificación de asignación de memoria
-- Mensajes informativos para el usuario
+2. **Bucle Principal:**
+   - Si es interactivo, muestra el prompt `wish> `
+   - Lee la línea con `fgets()`
+   - Separa los comandos por `&` y luego los argumentos por espacios
+   - Ejecuta cada comando:
+     * Si es built-in (exit, cd, path): lo ejecuta directamente
+     * Si es externo: hace fork() + busca en PATH + execv()
+   - Hace wait() por cada proceso hijo que se creó
+   - Verifica si toca salir (porque se digitó exit)
+
+3. **Finalización:**
+   - Libera toda la memoria que se reservó
+   - Cierra los archivos que estén abiertos
 
 ## Estructuras de Datos Utilizadas
 
-### Array Dinámico de Punteros
+### Estructura de Ruta (PATH)
 ```c
-char **lines = NULL;  // Array principal
-int line_count = 0;   // Contador de líneas
-int capacity = 10;    // Capacidad actual
+typedef struct {
+  char **entradas;      // Los directorios del PATH
+  int tamaño;          // Cuántos directorios hay
+  int capacidad;        // Capacidad total del array
+} arreglo_rutas_t;
 ```
 
-### Buffer de Lectura
+### Estructura de Comando
 ```c
-char buffer[1024];    // Buffer temporal para leer los archivos
+typedef struct {
+  char **argumentos;    // Los argumentos del comando
+  int tamaño;          // Cantidad de argumentos
+  int capacidad;        // Capacidad del array
+} comando_t;
 ```
 
-## Funciones usadas
+### Estructura de Lista de Comandos
+```c
+typedef struct {
+  comando_t **comandos; // Lista con los comandos paralelos
+  int tamaño;          // Cuántos comandos hay
+  int capacidad;        // Capacidad del array
+} lista_comandos_t;
+```
 
-### Gestión de Memoria
-- `malloc()`: Asignación inicial de memoria
-- `realloc()`: Redimensionamiento dinámico del array
-- `free()`: Liberación de memoria
+## Funciones Principales Usadas
 
-### Entrada/Salida
-- `fgets()`: Lectura de líneas desde archivo o stdin
-- `fprintf()`: Escritura a archivo o stdout
-- `fopen()/fclose()`: Manejo de archivos
+### Llamadas al Sistema (syscalls)
+- **`fork()`**: Crea un proceso hijo para correr comandos externos
+- **`execv()`**: Ejecuta el comando en el proceso hijo
+- **`wait()`**: Espera a que los procesos hijos terminen
+- **`chdir()`**: Cambia de directorio (comando cd)
+- **`access()`**: Verifica si un archivo existe y es ejecutable
+- **`open()` / `dup2()`**: Para implementar la redirección de salida
 
-### Manipulación de Strings
-- `strlen()`: Cálculo de longitud de cadenas
-- `strcpy()`: Copia de cadenas
+### Funciones de Biblioteca
+- **`fgets()`**: Lee la entrada del usuario o del archivo
+- **`strtok_r()`**: Separa los comandos por `&` y los argumentos por espacios
+- **`malloc()` / `realloc()` / `free()`**: Manejo de memoria dinámica
+- **`strcmp()` / `strlen()` / `strcpy()`**: Para trabajar con strings
+- **`snprintf()`**: Arma las rutas completas de los ejecutables
 
+## Ejemplos de Uso
+
+### Comandos Básicos
+```bash
+wish> ls -la
+wish> cd /tmp
+wish> path /bin /usr/bin
+```
+
+### Comandos Paralelos
+```bash
+wish> echo "Tarea 1" & echo "Tarea 2" & echo "Tarea 3"
+```
+
+### Redirección
+```bash
+wish> ls -la > salida.txt
+```
+
+### Modo Batch
+```bash
+$ ./wish comandos.txt
+```
 
 ## Conclusiones
 
-El programa desarrollado cumple exitosamente con los objetivos planteados para la practica, demostrando el uso de conceptos fundamentales de programación en C como:
+El proyecto se pudo completar cumpliendo con los objetivos que se plantearon al inicio:
 
-- Gestión dinámica de memoria
-- Manejo de archivos y entrada/salida
-- Validación de errores
-- Manipulación de argumentos de línea de comandos
-- Estructuras de datos dinámicas
+1. **Comprensión de Procesos**: Se aprendió a usar fork, exec y wait que son muy importantes para manejar procesos en Linux
+2. **Llamadas al Sistema**: Se ganó experiencia práctica usando las syscalls más comunes del sistema operativo
+3. **Arquitectura de Shells**: Se entendió mejor como funcionan los shells de verdad por dentro
+4. **Gestión de Memoria**: Se implementaron estructuras dinámicas que crecen según se necesite
+5. **Manejo de Errores**: Se validaron bien las entradas y se manejaron los errores que pueden pasar
